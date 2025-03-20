@@ -38,7 +38,7 @@ func (p *SubProxy) Start() {
 	}
 	var procIn io.Reader
 	var procOut, procErr io.Writer
-	p.cmd = exec.Command("tor", "-f", "./torrc-tmp/torrc."+strconv.Itoa(p.ID))
+	p.cmd = exec.Command(*torPath, "-f", "./torrc-tmp/torrc."+strconv.Itoa(p.ID))
 	p.cmd.Stdin = procIn
 	p.cmd.Stdout = procOut
 	p.cmd.Stderr = procErr

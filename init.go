@@ -16,6 +16,7 @@ var proxyCount *int
 var slowStart *bool
 var httpPort *int
 var httpsPort *int
+var torPath *string
 
 var proxies []*SubProxy
 
@@ -27,6 +28,7 @@ func init() {
 	slowStart = flag.Bool("slow", false, "start proxies slowly")
 	httpPort = flag.Int("http", 7000, "port to bind HTTP to")
 	httpsPort = flag.Int("https", 7001, "port to bind HTTPs to")
+	torPath = flag.String("https", "tor", "port to bind HTTPs to")
 	flag.Parse()
 
 	// clear old tmp files
