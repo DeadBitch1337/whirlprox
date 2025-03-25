@@ -48,6 +48,38 @@ func (p *SubProxy) Start() {
 		fmt.Printf("proxy %d exited on Start with error: %s", p.ID, err.Error())
 		log.Fatal(err.Error())
 	}
+
+	for p.Status != "online" {
+		time.Sleep(time.Second * 3)
+		p.UpdateIP()
+	}
+	p.printStatus()
+}
+
+func (p *SubProxy) Stop() {
+	p.IP = "unknown"
+	p.Status = "offline"
+	err := p.cmd.Process.Kill()
+	if err != nil {
+		_ = fmt.Errorf("proxy %d exited on Stop with error: %s\n", p.ID, err.Error())
+	}
+	p.Status = "offline"
+}
+
+func (p *SubProxy) Restart() {
+	p.Stop()
+	time.Sleep(time.Millisecond * 100)
+	p.Start()
+}
+
+func (p *SubProxy) printStatus() {
+	statTab := "\t"
+	if len(p.IP) <= 8 {
+		statTab = "\t\t\t"
+	} else if len(p.IP) <= 12 {
+		statTab = "\t\t"
+	}
+	fmt.Printf("Proxy #%03d IP: %s%s| Status: %s\n", p.ID, p.IP, statTab, p.Status)
 }
 
 func (p *SubProxy) UpdateIP() string {
@@ -59,7 +91,7 @@ func (p *SubProxy) UpdateIP() string {
 		}
 		err := json.Unmarshal(resultBytes, &result)
 		if err != nil {
-			fmt.Println(err.Error())
+			//fmt.Println(err.Error())
 		} else {
 			p.IP = result.IP
 			if p.IP == "" {
@@ -72,19 +104,10 @@ func (p *SubProxy) UpdateIP() string {
 			p.Status = "offline"
 		}
 	}
-	fmt.Printf("Proxy #%03d IP: %s\t| Status: %s\n", p.ID, p.IP, p.Status)
 	return p.IP
 }
 
-func (p *SubProxy) Stop() {
-	err := p.cmd.Process.Kill()
-	if err != nil {
-		fmt.Printf("proxy %d exited on Stop with error: %s", p.ID, err.Error())
-	}
-	p.Status = "offline"
-}
-
-func (p *SubProxy) Monitor() {
+func (p *SubProxy) Listen() {
 	for {
 		msg := <-p.ControlChannel
 		if msg == "stop" {
@@ -92,9 +115,7 @@ func (p *SubProxy) Monitor() {
 		} else if msg == "start" {
 			p.Start()
 		} else if msg == "restart" {
-			p.Stop()
-			time.Sleep(time.Millisecond * 100)
-			p.Start()
+			p.Restart()
 		} else if msg == "update" {
 			p.UpdateIP()
 		}

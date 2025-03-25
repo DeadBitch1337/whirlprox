@@ -28,9 +28,13 @@ func init() {
 	slowStart = flag.Bool("slow", false, "start proxies slowly")
 	httpPort = flag.Int("http", 7000, "port to bind HTTP to")
 	httpsPort = flag.Int("https", 7001, "port to bind HTTPs to")
-	torPath = flag.String("https", "tor", "port to bind HTTPs to")
+	torPath = flag.String("tor", "tor", "tor location")
 	flag.Parse()
 
+	if *proxyCount < 10 {
+		fmt.Println("Proxy count must be greater than 10. Increasing proxy count...")
+		*proxyCount = 10
+	}
 	// clear old tmp files
 	fmt.Println("Creating temp directory...")
 	err := os.RemoveAll("./torrc-tmp")
@@ -48,21 +52,28 @@ func init() {
 	fmt.Println("Preparing config files...")
 	configBytes, err := os.ReadFile("./torrc.base")
 	if err != nil {
-		fmt.Println("Could not read torrc.base: ")
-		panic(err.Error())
+		_ = fmt.Errorf("Could not read torrc.base (%s)\nProceeding without file...\n", err.Error())
+		configBytes = []byte(`
+# configure torrc properties here
+# SocksPort & ControlPort will be overwritten
+SocksPort 0
+ControlPort 0
+DataDirectory 0`)
 	}
-	socksRegex, err := regexp.Compile("\\n*\\s*SocksPort\\s*\\d+\\s*\\n*")
-	controlRegex, err := regexp.Compile("\\n*\\s*ControlPort\\s*\\d+\\s*\\n*")
-	dataRegex, err := regexp.Compile("\\n*\\s*DataDirectory\\s*\\S+\\s*\\n*")
+	configString := string(configBytes)
+
+	socksRegex, _ := regexp.Compile(`\n*\s*SocksPort\s*\d+\s*\n*`)
+	controlRegex, _ := regexp.Compile(`\n*\s*ControlPort\s*\d+\s*\n*`)
+	dataRegex, _ := regexp.Compile(`\n*\s*DataDirectory\s*\S+\s*\n*`)
 
 	if socksRegex.Find(configBytes) == nil {
-		configBytes = []byte(string(configBytes) + "\nSocksPort 0\n")
+		configBytes = []byte(configString + "\nSocksPort 0\n")
 	}
 	if controlRegex.Find(configBytes) == nil {
-		configBytes = []byte(string(configBytes) + "\nControlPort 0\n")
+		configBytes = []byte(configString + "\nControlPort 0\n")
 	}
 	if dataRegex.Find(configBytes) == nil {
-		configBytes = []byte(string(configBytes) + "\nDataDirectory 0\n")
+		configBytes = []byte(configString + "\nDataDirectory 0\n")
 	}
 
 	// write config files for each proxy
@@ -81,36 +92,38 @@ func init() {
 				panic(err.Error())
 			}
 		}
-
 	}
 
+	fmt.Println("HTTP Proxy will start when 75% of proxies are ready")
+	time.Sleep(time.Second)
 	fmt.Println("Starting proxies...")
 	for i := 0; i < *proxyCount; i++ {
-		fmt.Printf("Starting proxy %03d... ", i)
-		if (i+1)%4 == 0 {
-			fmt.Println()
-		}
 		proxies = append(proxies, newSubProxy(i))
-		proxies[i].Start()
+		go proxies[i].Start()
 		if *slowStart {
 			time.Sleep(time.Millisecond * 500)
 		} else {
 			time.Sleep(time.Millisecond * 250)
 		}
-		go proxies[i].Monitor()
+		go proxies[i].Listen()
 	}
-	fmt.Println()
 
-	fmt.Println("Waiting for proxies to start...")
-	for i := 9; i > 0; i-- {
-		fmt.Printf("%02d... ", i)
-		if i%5 == 0 {
-			fmt.Println()
+	startedCount := 0
+	lastCount := 0
+	for float64(startedCount) < float64(*proxyCount)*0.75 {
+		startedCount = 0
+		for i := 0; i < *proxyCount; i++ {
+			if proxies[i].Status == "online" {
+				startedCount++
+			}
+		}
+		lastCount = startedCount
+		if lastCount < startedCount {
+			fmt.Printf("%d proxies started (%f)...\n", startedCount, float64(startedCount)/float64(*proxyCount))
 		}
 		time.Sleep(time.Second)
 	}
-	fmt.Println()
-	go heartbeat()
+	//go heartbeat()
 }
 
 func heartbeat() {
